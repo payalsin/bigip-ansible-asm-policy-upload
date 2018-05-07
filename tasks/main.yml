@@ -1,0 +1,62 @@
+---
+  #Deploy ASM policy
+  - name: Create an LTM policy to create rules
+    bigip_policy:
+      name: asm-ltm-policy
+   
+  - name: Import and activate ASM policy
+    bigip_asm_policy:
+      name: Demo
+      file: "asm_policy.xml"
+      active: yes
+      state: present
+    delegate_to: localhost
+
+  - name: Create a rule in the LTM policy to enable the ASM for the above imported policy
+    bigip_policy_rule:
+      policy: asm-ltm-policy
+      name: rule1
+      actions:
+      - type: enable
+        asm_policy: Demo
+        
+ #Create VS/Pool/members
+  - name: Create nodes
+    bigip_node:
+      host: "{{item.host}}"
+      name: "{{item.host}}"
+    with_items: "{{pool_members}}"
+    delegate_to: localhost
+
+  - name: Create pool
+    bigip_pool:
+      state: "present"
+      name: "http-pool"
+      lb_method: "round-robin"
+      monitors: "/Common/http"
+      monitor_type: "and_list"
+    delegate_to: localhost
+
+  - name: Add Pool members
+    bigip_pool_member:
+      name: "{{item.host}}"
+      host: "{{item.host}}"
+      port: "{{item.port}}"
+      pool: "http-pool"
+    with_items: "{{pool_members}}"
+    delegate_to: localhost
+
+  #Attach ASM profile to the virtual server amongst other configurations
+  - name: Add Virtual Server
+    bigip_virtual_server:
+      name: "{{vip_name}}"
+      destination: "{{vip_ip}}"
+      port: "{{vip_port}}"
+      pool: "http-pool"
+      snat: "Automap"
+      profiles:
+       - http
+       - websecurity
+      policies:
+       - asm-ltm-policy
+    delegate_to: localhost
